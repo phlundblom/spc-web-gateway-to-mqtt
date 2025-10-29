@@ -1,0 +1,33 @@
+{
+  "name": "spc-web-gateway-to-mqtt",
+  "version": "0.0.1",
+  "description": "Bridge between Lundix SPC Web Gateway to Home Assistant using MQTT",
+  "main": "index.js",
+  "scripts": {
+    "prebuild": "node scripts/rmrf.js",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "lint": "eslint \"{src,test}/**/*.ts\"",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "PH Lundblom",
+  "license": "GPL-3.0-or-later",
+  "dependencies": {
+    "@types/object-hash": "^3.0.6",
+    "axios": "^1.12.2",
+    "mqtt": "^5.14.1",
+    "object-hash": "^3.0.0",
+    "ws": "^8.18.3",
+    "yaml": "^2.8.1",
+    "zod": "^4.1.12",
+    "zod-config": "^1.3.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.1",
+    "eslint": "^9.38.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.4",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.3"
+  }
+}
