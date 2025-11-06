@@ -3,8 +3,8 @@ import { loadConfig } from 'zod-config';
 import { yamlAdapter } from 'zod-config/yaml-adapter';
 import * as path from 'path';
 import { MqttService } from './mqtt-service.js';
-import { PanelOverview, SpcService, ZoneState } from './spc-service.js';
-import { ZoneInput, ZoneType } from './spc-base.js';
+import { AreaState, PanelOverview, SpcService, ZoneState } from './spc-service.js';
+import { AreaMode, areaModeToHA, ZoneInput, ZoneStatus, ZoneType } from './spc-base.js';
 import { MD5 } from 'object-hash';
 
 const mqttConfigSchema = z.object({
@@ -13,7 +13,6 @@ const mqttConfigSchema = z.object({
   use_tls: z.boolean().optional().default(false),
   username: z.string().optional(),
   password: z.string().optional(),
-  ha_discovery_topic_prefix: z.string().optional().default('homeassistant'),
 });
 
 const spcConfigSchema = z.object({
@@ -47,8 +46,6 @@ interface StateData {
 const LOOP_INTERVAL_MS = 60 * 1000;
 
 async function mainLoop(state: StateData): Promise<void> {
-  console.debug('mainLoop');
-
   const panelOverview = await state.spcService.getPanelOverview();
 
   const discoveryPayload = panelOverviewToHADiscovery(panelOverview);
@@ -66,17 +63,15 @@ async function mainLoop(state: StateData): Promise<void> {
 
     // Send online availability
     await state.mqttService.publish(
-      `homeassistant/sensor/${state.spcPanelSerial.toLowerCase()}_spc/status`,
-      JSON.stringify({ status: 'online' }),
+      `homeassistant/device/${panelOverview.panel.serial_nbr.toLowerCase()}_spc/status`,
+      JSON.stringify({ panel: 'online' }),
       false,
     );
-
-    // Set up LWT to set device as offline when disconnecting
-    //
   }
 
   await sendPanelStates(state);
-  await sendZoneStates(state);
+  await sendZoneStatesAndStatuses(state);
+  await sendAreaStates(state);
 
   state.loopHandle = setTimeout(mainLoop, LOOP_INTERVAL_MS, state);
 }
@@ -91,12 +86,17 @@ export async function main(): Promise<void> {
     console.error('Error handling configuration file');
     process.exit(1);
   }
-  console.log(`Config is ${config}`);
 
   const stateData: StateData = {} as StateData;
 
   const mqttService = new MqttService(config.mqtt);
-  const spcService = new SpcService(config.spc, mqttService, spcEventCallback, stateData);
+  const spcService = new SpcService(config.spc, spcEventCallback, stateData);
+  const panelOverview = await spcService.getPanelOverview();
+  mqttService.setWill({
+    topic: `homeassistant/device/${panelOverview.panel.serial_nbr.toLowerCase()}_spc/status`,
+    payload: Buffer.from(JSON.stringify({ panel: 'offline' })),
+    retain: true,
+  });
 
   stateData.config = config;
   stateData.mqttService = mqttService;
@@ -110,10 +110,19 @@ export async function main(): Promise<void> {
   // TODO subscribe to 'homeassistant/status' and trigger a full config + state on 'online'
 }
 
-async function spcEventCallback(zoneState: ZoneState, anonymousData: any) {
+async function spcEventCallback(currentState: ZoneState | AreaState, anonymousData: any) {
   const state = anonymousData as StateData;
 
-  await publishZone(state, zoneState.id, zoneState.input == ZoneInput.CLOSED ? 'OFF' : 'ON');
+  if ('input' in currentState) {
+    if ([ZoneInput.OPEN, ZoneInput.CLOSED].includes(currentState.input)) {
+      await publishZoneState(state, currentState.id, currentState.input == ZoneInput.CLOSED ? 'OFF' : 'ON');
+      await publishZoneStatus(state, currentState.id, 'online');
+    } else {
+      await publishZoneStatus(state, currentState.id, 'offline');
+    }
+  } else if ('mode' in currentState) {
+    await publishAreaState(state, currentState.id, areaModeToHA(currentState.mode));
+  }
 }
 
 async function exitHandler(options: StateData) {
@@ -157,10 +166,46 @@ function panelOverviewToHADiscovery(overview: PanelOverview): Record<string, any
         value_template: '{{ value_json.state }}',
         unique_id: `${unique}_zone_${zone.id}`,
         state_topic: `homeassistant/binary_sensor/${unique}_zone_${zone.id}/state`,
+        availability: [
+          {
+            topic: `homeassistant/device/${unique}_spc/status`,
+            value_template: '{{ value_json.panel }}',
+          },
+          {
+            topic: `homeassistant/binary_sensor/${unique}_zone_${zone.id}/status`,
+            value_template: '{{ value_json.status }}',
+          },
+        ],
         ...deviceClass,
       };
 
       return [zone.name, value];
+    }),
+  );
+
+  const areas = new Map<String, any>(
+    overview.areas.map((area) => {
+      const value = {
+        platform: 'alarm_control_panel',
+        name: area.name,
+        unique_id: `${unique}_area_${area.id}`,
+        state_topic: `homeassistant/alarm_control_panel/${unique}_area_${area.id}/state`,
+        value_template: '{{ value_json.state }}',
+        command_topic: 'homeassistant/readonly-ignored',
+        supported_features: ['arm_home', 'arm_away', 'arm_night', 'trigger'],
+        // availability: [
+        //   {
+        //     topic: `homeassistant/device/${unique}_spc/status`,
+        //     value_template: '{{ value_json.panel }}',
+        //   },
+        //   {
+        //     topic: `homeassistant/alarm_control_panel/${unique}_area_${area.id}/status`,
+        //     value_template: '{{ value_json.status }}',
+        //   },
+        // ],
+      };
+
+      return [area.name, value];
     }),
   );
 
@@ -210,10 +255,16 @@ function panelOverviewToHADiscovery(overview: PanelOverview): Record<string, any
       },
       // TODO add SPC tamper
       ...Object.fromEntries(zones),
+      ...Object.fromEntries(areas),
     },
     state_topic: `homeassistant/sensor/${unique}_spc/state`,
-    availability_topic: `homeassistant/sensor/${unique}_spc/status`,
-    availability_template: '{{ value_json.status }}',
+    availability: [
+      {
+        topic: `homeassistant/device/${unique}_spc/status`,
+        value_template: '{{ value_json.panel }}',
+      },
+    ],
+    availability_mode: 'all',
   };
 }
 
@@ -235,23 +286,24 @@ async function sendPanelStates(state: StateData): Promise<boolean> {
   );
 }
 
-async function sendZoneStates(state: StateData): Promise<void> {
+async function sendZoneStatesAndStatuses(state: StateData): Promise<void> {
   const zoneStates = await state.spcService.getZoneStates();
 
   if (zoneStates.length == 0 || !state.spcPanelSerial) {
     return;
   }
 
-  // TOOD handle availability topic here
-
   const publishRequests = zoneStates.map((zone) => {
-    return publishZone(state, zone.id, zone.input == ZoneInput.CLOSED ? 'OFF' : 'ON');
+    return [
+      publishZoneState(state, zone.id, zone.input == ZoneInput.CLOSED ? 'OFF' : 'ON'),
+      publishZoneStatus(state, zone.id, zone.status == ZoneStatus.OK ? 'online' : 'offline'),
+    ];
   });
 
-  await Promise.all(publishRequests);
+  await Promise.all(publishRequests.flat());
 }
 
-async function publishZone(state: StateData, zoneId: number, zoneState: 'ON' | 'OFF'): Promise<boolean> {
+async function publishZoneState(state: StateData, zoneId: number, zoneState: 'ON' | 'OFF'): Promise<boolean> {
   if (!state.spcPanelSerial) {
     return Promise.reject('No panel serial number available');
   }
@@ -262,3 +314,57 @@ async function publishZone(state: StateData, zoneId: number, zoneState: 'ON' | '
     false,
   );
 }
+
+async function publishZoneStatus(state: StateData, zoneId: number, zoneStatus: 'online' | 'offline'): Promise<boolean> {
+  if (!state.spcPanelSerial) {
+    return Promise.reject('No panel serial number available');
+  }
+
+  return state.mqttService.publish(
+    `homeassistant/binary_sensor/${state.spcPanelSerial?.toLowerCase()}_zone_${zoneId}/status`,
+    JSON.stringify({ status: zoneStatus }),
+    false,
+  );
+}
+
+async function sendAreaStates(state: StateData): Promise<void> {
+  const areaStates = await state.spcService.getAreaStates();
+
+  if (areaStates.length == 0 || !state.spcPanelSerial) {
+    return;
+  }
+
+  const publishRequests = areaStates.map((area) => {
+    return publishAreaState(state, area.id, areaModeToHA(area.mode));
+  });
+
+  await Promise.all(publishRequests);
+}
+
+async function publishAreaState(
+  state: StateData,
+  areaId: number,
+  areaState: 'armed_away' | 'armed_home' | 'armed_night' | 'disarmed' | 'triggered',
+): Promise<boolean> {
+  if (!state.spcPanelSerial) {
+    return Promise.reject('No panel serial number available');
+  }
+
+  return state.mqttService.publish(
+    `homeassistant/alarm_control_panel/${state.spcPanelSerial?.toLowerCase()}_area_${areaId}/state`,
+    JSON.stringify({ state: areaState }),
+    false,
+  );
+}
+
+// async function publishAreaStatus(state: StateData, areaId: number, areaStatus: 'online' | 'offline'): Promise<boolean> {
+//   if (!state.spcPanelSerial) {
+//     return Promise.reject('No panel serial number available');
+//   }
+//
+//   return state.mqttService.publish(
+//     `homeassistant/alarm_control_panel/${state.spcPanelSerial?.toLowerCase()}_area_${areaId}/status`,
+//     JSON.stringify({ status: areaStatus }),
+//     false,
+//   );
+// }

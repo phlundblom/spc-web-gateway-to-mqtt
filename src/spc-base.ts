@@ -49,6 +49,13 @@ export enum ZoneType {
   ALL_OKAY,
 }
 
+export enum AreaMode {
+  UNSET = 0,
+  PART_SET_A,
+  PART_SET_B,
+  FULL_SET,
+}
+
 export function siaToZoneInput(siaCode: string) {
   switch (siaCode) {
     case 'ZO':
@@ -64,4 +71,31 @@ export function siaToZoneInput(siaCode: string) {
     default:
       return ZoneInput.OFFLINE;
   }
+}
+
+export function siaToAreaMode(siaCode: string, mode: AreaMode | undefined) {
+  switch (siaCode) {
+    case 'OG':
+      return AreaMode.UNSET;
+    case 'NL':
+      if (mode) {
+        return mode;
+      } else {
+        return AreaMode.FULL_SET;
+      }
+    case 'CG':
+      return AreaMode.FULL_SET;
+    default:
+      return AreaMode.UNSET;
+  }
+}
+
+export function areaModeToHA(mode: AreaMode) {
+  return mode == AreaMode.UNSET
+    ? 'disarmed'
+    : mode == AreaMode.PART_SET_A
+      ? 'armed_night'
+      : mode == AreaMode.PART_SET_B
+        ? 'armed_home'
+        : 'armed_away';
 }

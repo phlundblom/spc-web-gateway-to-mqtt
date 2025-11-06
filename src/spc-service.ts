@@ -1,6 +1,5 @@
-import { siaToZoneInput, ZoneInput, ZoneStatus, ZoneType } from './spc-base';
+import { AreaMode, siaToAreaMode, siaToZoneInput, ZoneInput, ZoneStatus, ZoneType } from './spc-base';
 import { SpcConfig } from './spc-web-gateway-to-mqtt';
-import { MqttService } from './mqtt-service';
 import axios, { AxiosError, AxiosInstance } from 'axios';
 import { WebSocket } from 'ws';
 import * as https from 'https';
@@ -44,24 +43,26 @@ export type ZoneState = {
   status: ZoneStatus;
 };
 
+export type AreaState = {
+  id: number;
+  mode: AreaMode;
+};
+
 export class SpcService {
   private config: SpcConfig;
-  private mqttService: MqttService;
   private axiosClient: AxiosInstance;
   private wsClient: WebSocket | undefined;
-  private ncount = 0;
   private wsConnected = false;
-  private eventCallback: (zoneState: ZoneState, anonymousData: any) => Promise<void>;
+  private ncount = 0;
+  private eventCallback: (state: ZoneState | AreaState, anonymousData: any) => Promise<void>;
   private eventCallbackData: any;
 
   constructor(
     config: SpcConfig,
-    mqttService: MqttService,
-    eventCallback: (zoneState: ZoneState, anonymousData: any) => Promise<void>,
+    eventCallback: (zoneState: ZoneState | AreaState, anonymousData: any) => Promise<void>,
     eventCallbackData: any,
   ) {
     this.config = config;
-    this.mqttService = mqttService;
     this.eventCallback = eventCallback;
     this.eventCallbackData = eventCallbackData;
 
@@ -148,6 +149,21 @@ export class SpcService {
     return [];
   }
 
+  async getAreaStates(): Promise<AreaState[]> {
+    const areaData = await this.spcGet('area');
+
+    if (areaData && areaData.area) {
+      return areaData.area.map((area: Record<string, any>) => {
+        return {
+          id: area.id,
+          mode: area.mode as AreaMode,
+        };
+      });
+    }
+
+    return [];
+  }
+
   private async spcGet(path: string): Promise<Record<string, any> | null> {
     let spcData = null;
     let retryOnce = false;
@@ -213,13 +229,6 @@ export class SpcService {
     });
 
     this.wsClient.on('message', async (buf: Buffer) => {
-      // WS data:  {"status":"success","data":{"sia":{"device_id":"1000","timestamp":"1761412691","sia_code":"ZO","sia_address":"1","description":"Vardagsrum BV¦ZONE¦1¦Huset","flags":"","verification_id":"0"}}}
-      // WS data:  {"status":"success","data":{"sia":{"device_id":"1000","timestamp":"1761728473","sia_code":"CG","sia_address":"2","description":"Ladan¦PH¦1","flags":"","verification_id":"0"}}}
-      // WS data:  {"status":"success","data":{"sia":{"device_id":"1000","timestamp":"1761728473","sia_code":"CQ","sia_address":"1","description":"PH","flags":"","verification_id":"0"}}}
-      // WS data:  {"status":"success","data":{"sia":{"device_id":"1000","timestamp":"1761728485","sia_code":"OG","sia_address":"2","description":"Ladan¦PH¦1","flags":"D","verification_id":"0"}}}
-      // WS data:  {"status":"success","data":{"sia":{"device_id":"1000","timestamp":"1761728485","sia_code":"OQ","sia_address":"1","description":"PH","flags":"","verification_id":"0"}}}
-
-      console.log('WS data: ', buf.toString('utf-8'));
       if (buf) {
         const msg = JSON.parse(buf.toString('utf-8'));
         if (msg.status === 'success' && msg.data && msg.data.sia) {
@@ -230,6 +239,13 @@ export class SpcService {
               const input = siaToZoneInput(sia.sia_code);
 
               await this.eventCallback({ id: sia.sia_address, input, status: ZoneStatus.OK }, this.eventCallbackData);
+            } else if (['CG', 'OG', 'NL'].includes(sia.sia_code)) {
+              const areaStates = await this.getAreaStates();
+              const matchingArea =
+                sia.sia_code === 'NL' ? areaStates.find((area) => area.id === sia.sia_address) : undefined;
+
+              const mode = siaToAreaMode(sia.sia_code, matchingArea?.mode);
+              await this.eventCallback({ id: sia.sia_address, mode: mode }, this.eventCallbackData);
             }
           }
         }
@@ -237,7 +253,7 @@ export class SpcService {
     });
   }
 
-  public async disconnect(): Promise<void> {
+  async disconnect(): Promise<void> {
     if (this.wsClient) {
       this.wsClient.close(1000, 'Normal Closure');
     }

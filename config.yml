@@ -1,0 +1,17 @@
+---
+spc:
+  hostname: spc
+  port: 8091
+  use_tls: True
+  ws_username: ws_user
+  ws_password: abc123
+  get_username: get_user
+  get_password: abc123
+
+mqtt:
+  hostname: mqtt
+  port: 8883
+  use_tls: True
+  username: spc
+  password: abc123
+  ha_discovery_topic_prefix: homeassistant
