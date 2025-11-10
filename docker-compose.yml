@@ -1,0 +1,10 @@
+---
+services:
+  spc-web-gateway-to-mqtt:
+    container_name: spc-web-gateway-to-mqtt
+    build:
+      dockerfile: Dockerfile
+      context: ./
+    restart: always
+    volumes:
+      - ./data/config.yml:/app/config.yml
