@@ -145,68 +145,62 @@ function panelOverviewToHADiscovery(overview: PanelOverview): Record<string, any
   const unique = overview.panel.serial_nbr.toLowerCase();
 
   const zones = new Map<string, any>(
-    overview.zones.map((zone) => {
-      let deviceClass = {};
+    overview.zones
+      ? overview.zones.map((zone) => {
+          let deviceClass = {};
 
-      if (
-        zone.type == ZoneType.ENTRY_EXIT ||
-        zone.name.toLowerCase().includes('door') ||
-        zone.name.toLowerCase().includes('dörr')
-      ) {
-        deviceClass = { device_class: 'door' };
-      } else if (zone.type == ZoneType.ALARM) {
-        deviceClass = { device_class: 'motion' };
-      } else if (zone.type == ZoneType.TAMPER) {
-        deviceClass = { device_class: 'tamper' };
-      }
+          if (
+            zone.type == ZoneType.ENTRY_EXIT ||
+            zone.name.toLowerCase().includes('door') ||
+            zone.name.toLowerCase().includes('dörr')
+          ) {
+            deviceClass = { device_class: 'door' };
+          } else if (zone.type == ZoneType.ALARM) {
+            deviceClass = { device_class: 'motion' };
+          } else if (zone.type == ZoneType.TAMPER) {
+            deviceClass = { device_class: 'tamper' };
+          }
 
-      const value = {
-        platform: 'binary_sensor',
-        name: zone.name,
-        value_template: '{{ value_json.state }}',
-        unique_id: `${unique}_zone_${zone.id}`,
-        state_topic: `homeassistant/binary_sensor/${unique}_zone_${zone.id}/state`,
-        availability: [
-          {
-            topic: `homeassistant/device/${unique}_spc/status`,
-            value_template: '{{ value_json.panel }}',
-          },
-          {
-            topic: `homeassistant/binary_sensor/${unique}_zone_${zone.id}/status`,
-            value_template: '{{ value_json.status }}',
-          },
-        ],
-        ...deviceClass,
-      };
+          const value = {
+            platform: 'binary_sensor',
+            name: zone.name,
+            value_template: '{{ value_json.state }}',
+            unique_id: `${unique}_zone_${zone.id}`,
+            state_topic: `homeassistant/binary_sensor/${unique}_zone_${zone.id}/state`,
+            availability: [
+              {
+                topic: `homeassistant/device/${unique}_spc/status`,
+                value_template: '{{ value_json.panel }}',
+              },
+              {
+                topic: `homeassistant/binary_sensor/${unique}_zone_${zone.id}/status`,
+                value_template: '{{ value_json.status }}',
+              },
+            ],
+            ...deviceClass,
+          };
 
-      return [zone.name, value];
-    }),
+          return [zone.name, value];
+        })
+      : [],
   );
 
   const areas = new Map<String, any>(
-    overview.areas.map((area) => {
-      const value = {
-        platform: 'alarm_control_panel',
-        name: area.name,
-        unique_id: `${unique}_area_${area.id}`,
-        state_topic: `homeassistant/alarm_control_panel/${unique}_area_${area.id}/state`,
-        value_template: '{{ value_json.state }}',
-        command_topic: 'homeassistant/readonly-ignored',
-        supported_features: ['arm_home', 'arm_away', 'arm_night', 'trigger'],
-        // availability: [
-        //   {
-        //     topic: `homeassistant/device/${unique}_spc/status`,
-        //     value_template: '{{ value_json.panel }}',
-        //   },
-        //   {
-        //     topic: `homeassistant/alarm_control_panel/${unique}_area_${area.id}/status`,
-        //     value_template: '{{ value_json.status }}',
-        //   },
-        // ],
-      };
+    overview.areas
+      ? overview.areas.map((area) => {
+          const value = {
+            platform: 'alarm_control_panel',
+            name: area.name,
+            unique_id: `${unique}_area_${area.id}`,
+            state_topic: `homeassistant/alarm_control_panel/${unique}_area_${area.id}/state`,
+            value_template: '{{ value_json.state }}',
+            command_topic: 'homeassistant/readonly-ignored',
+            supported_features: ['arm_home', 'arm_away', 'arm_night', 'trigger'],
+          };
 
-      return [area.name, value];
-    }),
+          return [area.name, value];
+        })
+      : [],
   );
 
   return {
