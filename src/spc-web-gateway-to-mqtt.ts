@@ -92,6 +92,12 @@ export async function main(): Promise<void> {
   const mqttService = new MqttService(config.mqtt);
   const spcService = new SpcService(config.spc, spcEventCallback, stateData);
   const panelOverview = await spcService.getPanelOverview();
+
+  if (!panelOverview || !panelOverview.panel) {
+    console.error('Cannot communicate with SPC panel');
+    process.exit(1);
+  }
+
   mqttService.setWill({
     topic: `homeassistant/device/${panelOverview.panel.serial_nbr.toLowerCase()}_spc/status`,
     payload: Buffer.from(JSON.stringify({ panel: 'offline' })),
