@@ -356,15 +356,3 @@ async function publishAreaState(
     false,
   );
 }
-
-// async function publishAreaStatus(state: StateData, areaId: number, areaStatus: 'online' | 'offline'): Promise<boolean> {
-//   if (!state.spcPanelSerial) {
-//     return Promise.reject('No panel serial number available');
-//   }
-//
-//   return state.mqttService.publish(
-//     `homeassistant/alarm_control_panel/${state.spcPanelSerial?.toLowerCase()}_area_${areaId}/status`,
-//     JSON.stringify({ status: areaStatus }),
-//     false,
-//   );
-// }
