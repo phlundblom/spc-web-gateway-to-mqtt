@@ -4,7 +4,7 @@ import axios, { AxiosError, AxiosInstance } from 'axios';
 import { WebSocket } from 'ws';
 import * as https from 'https';
 import * as crypto from 'crypto';
-import * as URL from 'url';
+import { URL } from 'node:url';
 
 export type PanelOverview = {
   panel: {
@@ -184,9 +184,10 @@ export class SpcService {
           if (ae.response?.status === 401 && ae.response?.headers['www-authenticate'] && this.config.get_username) {
             retryOnce = !retryOnce;
 
+            const url = new URL(this.axiosClient.defaults.baseURL + path);
             const auth = this.digest(
               'GET',
-              URL.parse(this.axiosClient.defaults.baseURL + path)?.pathname || '/',
+              url?.pathname || '/',
               ae.response?.headers['www-authenticate'],
               this.config.get_username,
               this.config.get_password || '',
