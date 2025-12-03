@@ -69,9 +69,13 @@ async function mainLoop(state: StateData): Promise<void> {
     );
   }
 
-  await sendPanelStates(state);
-  await sendZoneStatesAndStatuses(state);
-  await sendAreaStates(state);
+  try {
+    await sendPanelStates(state);
+    await sendZoneStatesAndStatuses(state);
+    await sendAreaStates(state);
+  } catch (error) {
+    console.error('Error publishing states and statuses in main loop:', error);
+  }
 
   state.loopHandle = setTimeout(mainLoop, LOOP_INTERVAL_MS, state);
 }
@@ -119,15 +123,19 @@ export async function main(): Promise<void> {
 async function spcEventCallback(currentState: ZoneState | AreaState, anonymousData: any) {
   const state = anonymousData as StateData;
 
-  if ('input' in currentState) {
-    if ([ZoneInput.OPEN, ZoneInput.CLOSED].includes(currentState.input)) {
-      await publishZoneState(state, currentState.id, currentState.input == ZoneInput.CLOSED ? 'OFF' : 'ON');
-      await publishZoneStatus(state, currentState.id, 'online');
-    } else {
-      await publishZoneStatus(state, currentState.id, 'offline');
+  try {
+    if ('input' in currentState) {
+      if ([ZoneInput.OPEN, ZoneInput.CLOSED].includes(currentState.input)) {
+        await publishZoneState(state, currentState.id, currentState.input == ZoneInput.CLOSED ? 'OFF' : 'ON');
+        await publishZoneStatus(state, currentState.id, 'online');
+      } else {
+        await publishZoneStatus(state, currentState.id, 'offline');
+      }
+    } else if ('mode' in currentState) {
+      await publishAreaState(state, currentState.id, areaModeToHA(currentState.mode));
     }
-  } else if ('mode' in currentState) {
-    await publishAreaState(state, currentState.id, areaModeToHA(currentState.mode));
+  } catch (error) {
+    console.error('Error handling SPC event callback:', error);
   }
 }
 
@@ -305,7 +313,7 @@ async function sendZoneStatesAndStatuses(state: StateData): Promise<void> {
 
 async function publishZoneState(state: StateData, zoneId: number, zoneState: 'ON' | 'OFF'): Promise<boolean> {
   if (!state.spcPanelSerial) {
-    return Promise.reject('No panel serial number available');
+    return Promise.reject('No panel serial number available for zone state');
   }
 
   return state.mqttService.publish(
@@ -317,7 +325,7 @@ async function publishZoneState(state: StateData, zoneId: number, zoneState: 'ON
 
 async function publishZoneStatus(state: StateData, zoneId: number, zoneStatus: 'online' | 'offline'): Promise<boolean> {
   if (!state.spcPanelSerial) {
-    return Promise.reject('No panel serial number available');
+    return Promise.reject('No panel serial number available for zone status');
   }
 
   return state.mqttService.publish(
@@ -347,7 +355,7 @@ async function publishAreaState(
   areaState: 'armed_away' | 'armed_home' | 'armed_night' | 'disarmed' | 'triggered',
 ): Promise<boolean> {
   if (!state.spcPanelSerial) {
-    return Promise.reject('No panel serial number available');
+    return Promise.reject('No panel serial number available for area state');
   }
 
   return state.mqttService.publish(
