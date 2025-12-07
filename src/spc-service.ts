@@ -195,12 +195,12 @@ export class SpcService {
             options = { headers: { Authorization: auth } };
           } else {
             console.error(`Error reading SPC panel info: ${(error as AxiosError).message}`);
-            console.error(`  Options are: ${options}`);
+            console.error(`  Options are: ${JSON.stringify(options)}`);
             retryOnce = false;
           }
         } else {
           console.error(`Error reading SPC panel info: ${error}`);
-          console.error(`  Options are: ${options}`);
+          console.error(`  Options are: ${JSON.stringify(options)}`);
           retryOnce = false;
         }
       }
