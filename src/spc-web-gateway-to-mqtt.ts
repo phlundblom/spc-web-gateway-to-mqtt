@@ -70,9 +70,15 @@ async function mainLoop(state: StateData): Promise<void> {
   }
 
   try {
-    await sendPanelStates(state);
-    await sendZoneStatesAndStatuses(state);
-    await sendAreaStates(state);
+    if (!(await sendPanelStates(state))) {
+      console.error('Error publishing panel states in main loop');
+    }
+    if (!(await sendZoneStatesAndStatuses(state))) {
+      console.error('Error publishing zone states and statuses in main loop');
+    }
+    if (!(await sendAreaStates(state))) {
+      console.error('Error publishing area states in main loop');
+    }
   } catch (error) {
     console.error('Error publishing states and statuses in main loop:', error);
   }
@@ -294,11 +300,11 @@ async function sendPanelStates(state: StateData): Promise<boolean> {
   );
 }
 
-async function sendZoneStatesAndStatuses(state: StateData): Promise<void> {
+async function sendZoneStatesAndStatuses(state: StateData): Promise<boolean> {
   const zoneStates = await state.spcService.getZoneStates();
 
   if (zoneStates.length == 0 || !state.spcPanelSerial) {
-    return;
+    return false;
   }
 
   const publishRequests = zoneStates.map((zone) => {
@@ -309,6 +315,8 @@ async function sendZoneStatesAndStatuses(state: StateData): Promise<void> {
   });
 
   await Promise.all(publishRequests.flat());
+
+  return true;
 }
 
 async function publishZoneState(state: StateData, zoneId: number, zoneState: 'ON' | 'OFF'): Promise<boolean> {
@@ -335,11 +343,11 @@ async function publishZoneStatus(state: StateData, zoneId: number, zoneStatus: '
   );
 }
 
-async function sendAreaStates(state: StateData): Promise<void> {
+async function sendAreaStates(state: StateData): Promise<boolean> {
   const areaStates = await state.spcService.getAreaStates();
 
   if (areaStates.length == 0 || !state.spcPanelSerial) {
-    return;
+    return false;
   }
 
   const publishRequests = areaStates.map((area) => {
@@ -347,6 +355,8 @@ async function sendAreaStates(state: StateData): Promise<void> {
   });
 
   await Promise.all(publishRequests);
+
+  return true;
 }
 
 async function publishAreaState(
