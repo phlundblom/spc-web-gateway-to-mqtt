@@ -4,7 +4,7 @@ import { yamlAdapter } from 'zod-config/yaml-adapter';
 import * as path from 'path';
 import { MqttService } from './mqtt-service.js';
 import { AreaState, PanelOverview, SpcService, ZoneState } from './spc-service.js';
-import { AreaMode, areaModeToHA, ZoneInput, ZoneStatus, ZoneType } from './spc-base.js';
+import { areaModeToHA, ZoneInput, ZoneStatus, ZoneType } from './spc-base.js';
 import { MD5 } from 'object-hash';
 
 const mqttConfigSchema = z.object({
@@ -310,7 +310,11 @@ async function sendZoneStatesAndStatuses(state: StateData): Promise<boolean> {
   const publishRequests = zoneStates.map((zone) => {
     return [
       publishZoneState(state, zone.id, zone.input == ZoneInput.CLOSED ? 'OFF' : 'ON'),
-      publishZoneStatus(state, zone.id, zone.status == ZoneStatus.OK ? 'online' : 'offline'),
+      publishZoneStatus(
+        state,
+        zone.id,
+        [ZoneStatus.OK, ZoneStatus.ISOLATE].includes(zone.status) ? 'online' : 'offline',
+      ),
     ];
   });
 
