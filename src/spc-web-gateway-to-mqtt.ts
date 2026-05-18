@@ -53,7 +53,7 @@ async function mainLoop(state: StateData): Promise<void> {
 
   // TODO hash is bad because overview contains statuses
   if (!state.discoveryHash || state.discoveryHash !== discoveryHash) {
-    state.mqttService.publish(
+    await state.mqttService.publish(
       `homeassistant/device/${panelOverview.panel.serial_nbr}/config`,
       JSON.stringify(discoveryPayload),
       true,
@@ -123,7 +123,11 @@ export async function main(): Promise<void> {
   process.on('SIGINT', exitHandler.bind(null, stateData));
 
   stateData.loopHandle = setTimeout(mainLoop, 100, stateData);
-  // TODO subscribe to 'homeassistant/status' and trigger a full config + state on 'online'
+  await mqttService.subscribe('homeassistant/status', (message) => {
+    if (message === 'online') {
+      stateData.discoveryHash = undefined;
+    }
+  });
 }
 
 async function spcEventCallback(currentState: ZoneState | AreaState, anonymousData: any) {
