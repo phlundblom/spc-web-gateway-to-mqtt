@@ -94,7 +94,7 @@ export class SpcService {
     if (areaData && areaData.area) {
       const areas = areaData.area.map((area: Record<string, any>) => {
         return {
-          id: area.id,
+          id: Number(area.id),
           name: area.name,
         };
       });
@@ -107,10 +107,10 @@ export class SpcService {
     if (zoneData && zoneData.zone) {
       const zones = zoneData.zone.map((zone: Record<string, any>) => {
         return {
-          id: zone.id,
+          id: Number(zone.id),
           name: zone.zone_name,
-          status: zone.status as ZoneStatus,
-          area: zone.area,
+          status: Number(zone.status) as ZoneStatus,
+          area: Number(zone.area),
           type: zone.type as ZoneType,
         };
       });
@@ -139,9 +139,9 @@ export class SpcService {
     if (zoneData && zoneData.zone) {
       return zoneData.zone.map((zone: Record<string, any>) => {
         return {
-          id: zone.id,
-          input: zone.input as ZoneInput,
-          status: zone.status as ZoneStatus,
+          id: Number(zone.id),
+          input: Number(zone.input) as ZoneInput,
+          status: Number(zone.status) as ZoneStatus,
         };
       });
     }
@@ -155,8 +155,8 @@ export class SpcService {
     if (areaData && areaData.area) {
       return areaData.area.map((area: Record<string, any>) => {
         return {
-          id: area.id,
-          mode: area.mode as AreaMode,
+          id: Number(area.id),
+          mode: Number(area.mode) as AreaMode,
         };
       });
     }
